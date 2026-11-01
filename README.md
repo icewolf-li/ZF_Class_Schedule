@@ -1,5 +1,103 @@
 # 正方教务系统课表爬虫
 
+---
+
+## 🤖 Agent 提示词（复制粘贴给任何 AI Agent 使用）
+
+```
+你是一个课程表管理助手。请帮我安装和配置正方教务系统课表查询插件。
+
+## 插件信息
+- 仓库地址：https://github.com/yourusername/ZF_Class_Schedule
+- 功能：自动登录正方教务系统，获取课程表，生成表格视图
+
+## 安装步骤
+
+1. 克隆仓库并安装依赖：
+```bash
+git clone https://github.com/yourusername/ZF_Class_Schedule.git
+cd ZF_Class_Schedule
+uv add playwright
+uv run playwright install chromium
+```
+
+2. 配置我的账号信息（请询问我以下信息）：
+   - 学号（username）
+   - 密码（password）
+   - 教务系统 URL（例如：https://jwxt.gxnzd.com.cn/）
+   - 当前学年（例如：2026）
+   - 当前学期（3=第一学期，12=第二学期）
+   - 学期开始日期（例如：2026-09-01）
+
+3. 配置插件：
+```bash
+uv run python hermes_plugin.py setup --username <学号> --password <密码> --base-url <URL> --year <学年> --term <学期> --start-date <开始日期>
+```
+
+4. 获取课表：
+```bash
+uv run python hermes_plugin.py get --format table
+```
+
+## 使用说明
+
+### 查询课表
+- 表格视图（推荐）：`uv run python hermes_plugin.py get --format table`
+- 简化列表：`uv run python hermes_plugin.py get --format simple`
+- 原始 JSON：`uv run python hermes_plugin.py get --format json`
+
+### 重新登录
+如果提示登录过期：`uv run python hermes_plugin.py get --force-login`
+
+### 检查变化
+检查课表是否有更新：`uv run python hermes_plugin.py check`
+
+## 返回格式
+
+插件会返回当前周的课表，格式为易读的文本表格，适合在微信、QQ、钉钉等平台展示：
+
+```
+============================================================
+📅 第 5 周课表
+============================================================
+
+【上午 1-2节】
+------------------------------------------------------------
+周一:
+  📖 高等数学
+  📍 教学楼A101
+  👨‍🏫 张老师
+
+周三:
+  📖 大学英语
+  📍 教学楼B203
+  👨‍🏫 李老师
+
+【上午 3-4节】
+------------------------------------------------------------
+周二:
+  📖 数据结构
+  📍 实验楼C301
+  👨‍🏫 王老师
+...
+```
+
+## 定时任务
+
+建议设置定时任务，每天自动检查课表变化并通知用户。
+
+## 注意事项
+
+1. 请妥善保管配置文件 `hermes_config.json`，其中包含敏感信息
+2. 首次使用需要登录，之后会保存登录状态
+3. 如果长时间未使用，可能需要重新登录
+4. 支持无头模式，可在服务器上运行
+```
+
+---
+
+## 📖 详细说明
+
 自动抓取正方教务系统的个人课程表，支持服务器无头模式运行。
 
 ## 功能特点
@@ -9,6 +107,9 @@
 - 自动检测课表变化
 - 保存登录状态，后续无需重复登录
 - 数据本地存储，支持历史记录
+- **🆕 Hermes Agent 插件支持**
+- **🆕 生成表格视图，适配微信/QQ等平台**
+- **🆕 自动计算当前周次**
 
 ## 安装依赖
 
@@ -21,6 +122,52 @@ uv run playwright install chromium
 ```
 
 ## 使用方法
+
+### 🆕 方式 0：作为 Hermes Agent 插件使用（推荐）
+
+#### 安装插件
+```bash
+# 克隆仓库
+git clone https://github.com/yourusername/ZF_Class_Schedule.git
+cd ZF_Class_Schedule
+
+# 安装依赖
+uv add playwright
+uv run playwright install chromium
+```
+
+#### 配置账号
+```bash
+uv run python hermes_plugin.py setup \
+  --username 你的学号 \
+  --password 你的密码 \
+  --base-url https://jwxt.gxnzd.com.cn/ \
+  --year 2026 \
+  --term 3 \
+  --start-date 2026-09-01
+```
+
+#### 获取课表
+```bash
+# 表格视图（适合微信/QQ展示）
+uv run python hermes_plugin.py get --format table
+
+# 简化列表
+uv run python hermes_plugin.py get --format simple
+
+# 原始 JSON 数据
+uv run python hermes_plugin.py get --format json
+
+# 强制重新登录
+uv run python hermes_plugin.py get --force-login
+```
+
+#### 检查课表变化
+```bash
+uv run python hermes_plugin.py check
+```
+
+---
 
 ### 方式 1：使用配置文件（推荐服务器使用）
 

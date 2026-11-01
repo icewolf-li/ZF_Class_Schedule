@@ -1,6 +1,67 @@
 # 更新日志
 
-## 新增功能
+## v2.0.0 - Hermes Agent 插件支持
+
+### 🎉 重大更新
+
+#### Hermes Agent 插件
+- 全新的 `hermes_plugin.py` 插件主文件
+- 完整的插件清单文件 `plugin.json`
+- 快速启动脚本 `hermes_quickstart.ps1`
+- 详细的集成文档 `hermes_integration_example.md`
+
+#### 表格视图生成
+- 📅 美观的当前周课表表格视图
+- 适配微信、QQ、钉钉、Telegram 等多平台
+- 支持三种格式：table（表格）、simple（简化）、json（原始数据）
+- 自动计算当前周次
+- 智能解析周次范围（支持单双周）
+
+#### 周次计算
+- 根据学期开始日期自动计算当前周次
+- 支持单双周课程过滤
+- 智能节次范围解析
+
+#### API 集成
+- Python API 接口，方便程序化调用
+- 配置管理功能
+- 课表变化检测
+- 错误处理和状态返回
+
+### 新增功能
+
+#### 插件命令
+```bash
+# 配置账号
+hermes_plugin.py setup --username <学号> --password <密码> --base-url <URL>
+
+# 获取课表
+hermes_plugin.py get --format table
+
+# 检查变化
+hermes_plugin.py check
+```
+
+#### 配置文件
+- `hermes_config.json` - 插件配置
+- `hermes_config.example.json` - 配置示例
+
+#### 文档
+- Agent 提示词（README.md 顶部）
+- Hermes Agent 集成示例
+- 多平台适配指南
+- API 使用说明
+
+### 改进
+
+- 更智能的登录状态管理
+- 更友好的错误提示
+- 更完善的测试用例
+- 更详细的文档说明
+
+---
+
+## v1.0.0 - 支持服务器无头模式
 
 ### 支持服务器无头模式
 

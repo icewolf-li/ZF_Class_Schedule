@@ -1,5 +1,7 @@
 # 配置文件包含敏感信息
 config.json
+hermes_config.json
+temp_hermes_config.json
 
 # 数据目录
 data/
@@ -22,3 +24,7 @@ env/
 *.swp
 *.swo
 *~
+
+# 测试文件
+test_*.py.out
+*.log
