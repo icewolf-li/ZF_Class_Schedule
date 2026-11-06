@@ -1,0 +1,10 @@
+*
+!cli/
+!cli/zf_schedule_monitor_uv.py
+!docker/
+!docker/Dockerfile
+!docker/Dockerfile.dockerignore
+!docker/pyproject.toml
+!docker/uv.lock
+!docker/schedule_api.py
+!docker/schedule_calendar.py
