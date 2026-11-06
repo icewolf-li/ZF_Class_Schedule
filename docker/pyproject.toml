@@ -1,0 +1,6 @@
+[project]
+name = "zf-class-schedule"
+version = "0.1.0"
+description = "正方教务课表抓取及轻量 API"
+requires-python = ">=3.13"
+dependencies = ["playwright==1.58.0"]

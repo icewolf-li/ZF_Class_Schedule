@@ -1,0 +1,40 @@
+{
+  "name": "zf_schedule",
+  "version": "2.0.0",
+  "description": "正方教务课表命令行适配器：表格、简化列表、JSON 和最近两次抓取比较",
+  "main": "hermes_plugin.py",
+  "repository": "https://github.com/icewolf-li/ZF_Class_Schedule",
+  "dependencies": {
+    "playwright": "==1.58.0"
+  },
+  "commands": {
+    "setup": {
+      "description": "保存账号及显式学期配置；建议 Agent 直接写 UTF-8 配置文件，避免密码进入命令历史",
+      "parameters": {
+        "username": {"type": "string", "required": true},
+        "password": {"type": "string", "required": true},
+        "base_url": {"type": "string", "required": true, "description": "包含 /jwglxt/ 等应用路径的完整 URL"},
+        "year": {"type": "string", "required": false, "default": "2026"},
+        "term": {"type": "string", "required": false, "default": "3", "enum": ["3", "12"]},
+        "start_date": {"type": "string", "required": false, "description": "教学第一周的周一，YYYY-MM-DD"}
+      }
+    },
+    "get": {
+      "description": "获取并保存课表",
+      "parameters": {
+        "force_login": {"type": "boolean", "required": false, "default": false},
+        "format": {"type": "string", "required": false, "default": "table", "enum": ["table", "simple", "json"]}
+      }
+    },
+    "check": {
+      "description": "比较最近两次成功抓取，不主动访问学校",
+      "parameters": {}
+    }
+  },
+  "install": {
+    "steps": [
+      "uv run --python 3.13.9 --with playwright==1.58.0 python -m playwright install --only-shell chromium",
+      "阅读 HERMES_AGENT_PROMPT.md，创建 hermes_config.json 后执行 get"
+    ]
+  }
+}

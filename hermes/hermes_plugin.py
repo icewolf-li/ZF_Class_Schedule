@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["playwright==1.58.0"]
+# ///
 """正方教务课表 Hermes Agent 插件
 
 这是一个 Hermes Agent 插件，用于查询正方教务系统的个人课程表。
@@ -19,6 +23,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import os
 import re
+
+MODULE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(MODULE_DIR.parent / "cli"))
 
 
 def get_current_week(start_date: str) -> int:
@@ -244,8 +251,8 @@ def generate_simple_table(courses: List[Dict[str, Any]], current_week: int) -> s
 class HermesPlugin:
     """Hermes Agent 插件主类"""
 
-    def __init__(self, config_path: str = "hermes_config.json"):
-        self.config_path = Path(config_path)
+    def __init__(self, config_path: str | None = None):
+        self.config_path = Path(config_path) if config_path else MODULE_DIR / "hermes_config.json"
         self.config = self.load_config()
 
     def load_config(self) -> Dict[str, Any]:
@@ -254,7 +261,7 @@ class HermesPlugin:
             return {
                 "username": "",
                 "password": "",
-                "base_url": "https://jwxt.gxnzd.com.cn/",
+                "base_url": "https://jwxt.gxnzd.com.cn/jwglxt/",
                 "year": "2026",
                 "term": "3",
                 "semester_start_date": "2026-09-01"
@@ -308,16 +315,8 @@ class HermesPlugin:
             }
 
         try:
-            # 创建临时配置文件用于主脚本
-            temp_config = Path("temp_hermes_config.json")
-            temp_config.write_text(
-                json.dumps({
-                    "username": self.config["username"],
-                    "password": self.config["password"],
-                    "base_url": self.config["base_url"]
-                }, ensure_ascii=False),
-                encoding="utf-8"
-            )
+            # 直接复用抓取函数，不再生成含密码的临时配置文件。
+            credentials = (self.config["username"], self.config["password"])
 
             # 模拟命令行参数
             class Args:
@@ -325,7 +324,7 @@ class HermesPlugin:
                     self.base_url = config["base_url"]
                     self.login = force_login
                     self.manual = False
-                    self.config = temp_config
+                    self.config = None
                     self.year = config.get("year", "2026")
                     self.term = config.get("term", "3")
                     self.endpoint = "kbcx/xskbcx_cxXsKb.html?gnmkdm=N2151"
@@ -336,13 +335,9 @@ class HermesPlugin:
             args = Args(self.config)
 
             # 调用主脚本功能
-            from zf_schedule_monitor_uv import (
-                fetch_from_school, normalize, locate_project_root,
-                resolve_data_dir, ensure_private_data_dir
-            )
+            from zf_schedule_monitor_uv import fetch_from_school, normalize, atomic_write_json
 
-            project_root = locate_project_root()
-            data_dir = resolve_data_dir(project_root, None)
+            data_dir = MODULE_DIR / "data" / "zf_schedule"
 
             # 如果不是强制登录，先尝试使用已有 cookie
             if not force_login:
@@ -352,23 +347,28 @@ class HermesPlugin:
                     try:
                         # 尝试用现有 cookie 获取（不登录）
                         args.login = False
-                        raw = fetch_from_school(args, data_dir)
+                        raw = fetch_from_school(args, data_dir, credentials=credentials)
                     except Exception:
                         # Cookie 可能过期，重新登录
                         args.login = True
-                        raw = fetch_from_school(args, data_dir)
+                        raw = fetch_from_school(args, data_dir, credentials=credentials)
                 else:
                     # 首次使用，需要登录
                     args.login = True
-                    raw = fetch_from_school(args, data_dir)
+                    raw = fetch_from_school(args, data_dir, credentials=credentials)
             else:
-                raw = fetch_from_school(args, data_dir)
+                raw = fetch_from_school(args, data_dir, credentials=credentials)
 
-            # 清理临时配置
-            temp_config.unlink(missing_ok=True)
-
-            # 标准化数据
+            # 保存前后两次标准化结果，供 check 比较变化。
             normalized = normalize(raw)
+            latest_file = data_dir / f"latest_raw_{args.year}_{args.term}.json"
+            snapshot_file = data_dir / f"snapshot_{args.year}_{args.term}.json"
+            if latest_file.exists():
+                previous = json.loads(latest_file.read_text(encoding="utf-8"))
+                atomic_write_json(snapshot_file, previous)
+            elif not snapshot_file.exists():
+                atomic_write_json(snapshot_file, normalized)
+            atomic_write_json(latest_file, normalized)
             courses = normalized["courses"]
 
             # 计算当前周
@@ -399,8 +399,7 @@ class HermesPlugin:
     def check_changes(self) -> Dict[str, Any]:
         """检查课表变化"""
         try:
-            project_root = Path(__file__).resolve().parent
-            data_dir = project_root / "data" / "zf_schedule"
+            data_dir = MODULE_DIR / "data" / "zf_schedule"
 
             year = self.config.get("year", "2026")
             term = self.config.get("term", "3")
@@ -449,8 +448,8 @@ class HermesPlugin:
 def main():
     """命令行接口"""
     parser = argparse.ArgumentParser(description="正方教务课表 Hermes Agent 插件")
-    parser.add_argument("command", choices=["setup", "get", "check", "test"],
-                       help="命令：setup=配置, get=获取课表, check=检查变化, test=测试")
+    parser.add_argument("command", choices=["setup", "get", "check"],
+                       help="命令：setup=配置, get=获取课表, check=比较最近两次抓取")
     parser.add_argument("--username", help="学号")
     parser.add_argument("--password", help="密码")
     parser.add_argument("--base-url", help="教务系统URL")
@@ -488,11 +487,6 @@ def main():
     elif args.command == "check":
         result = plugin.check_changes()
         print(json.dumps(result, ensure_ascii=False, indent=2))
-
-    elif args.command == "test":
-        print("测试插件功能...")
-        print(f"配置文件：{plugin.config_path}")
-        print(f"配置内容：{json.dumps(plugin.config, ensure_ascii=False, indent=2)}")
 
 
 if __name__ == "__main__":

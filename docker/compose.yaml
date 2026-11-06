@@ -1,0 +1,27 @@
+name: zf_class_schedule
+
+services:
+  schedule:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ZF_HOST: "0.0.0.0"
+      ZF_PORT: "8000"
+      ZF_DATA_DIR: "/app/data"
+    volumes:
+      - type: bind
+        source: ./config.json
+        target: /app/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - schedule-data:/app/data
+    init: true
+    shm_size: "256mb"
+    restart: unless-stopped
+
+volumes:
+  schedule-data:

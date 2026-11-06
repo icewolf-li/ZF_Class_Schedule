@@ -1,12 +1,17 @@
-# 配置文件包含敏感信息
+# 真实账号、密钥和运行数据（规则适用于各模块）
 config.json
 hermes_config.json
 temp_hermes_config.json
-
-# 数据目录
+section_times.json
 data/
+.env
+.env.*
 
-# Python
+# Agent 本地进度记录与临时日志
+.agent/
+*.log
+
+# Python 本地环境和缓存
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,13 +23,9 @@ ENV/
 env/
 .uv/
 
-# IDE
+# 编辑器本地文件
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# 测试文件
-test_*.py.out
-*.log

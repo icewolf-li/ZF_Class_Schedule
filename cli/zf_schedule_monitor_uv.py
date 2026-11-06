@@ -1,37 +1,17 @@
 #!/usr/bin/env python3
-"""正方教务课表抓取 / 本地快照比较（适用于已初始化的 uv 项目）。
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["playwright==1.58.0"]
+# ///
+"""正方教务课表抓取与快照比较，可直接通过 uv run 执行。
 
-把本文件放在 uv 项目内，建议放在项目根目录：
-  uv add playwright
-  uv run playwright install chromium
+首次使用（交互输入账号密码，自动准备依赖与无头浏览器）：
+  uv run --python 3.13.9 cli/zf_schedule_monitor_uv.py --install-browser --login --base-url https://jwxt.gxnzd.com.cn/jwglxt/
 
-  # 方式1：使用配置文件（推荐服务器使用）
-  uv run python zf_schedule_monitor.py --base-url https://jwxt.gxnzd.com.cn/ --config config.json
-
-  # 方式2：命令行交互式输入
-  uv run python zf_schedule_monitor.py --base-url https://jwxt.gxnzd.com.cn/ --login
-
-  # 方式3：手动浏览器登录（原方式）
-  uv run python zf_schedule_monitor.py --base-url https://jwxt.gxnzd.com.cn/ --login --manual
-
-  # 后续使用已保存的 Cookie
-  uv run python zf_schedule_monitor.py --base-url https://jwxt.gxnzd.com.cn/
-
-只校验已有 JSON，不登录学校：
-  uv run python zf_schedule_monitor.py --from-json latest_raw_2026_3.json
-
-配置文件格式 (config.json):
-  {
-    "username": "你的学号",
-    "password": "你的密码",
-    "base_url": "https://jwxt.gxnzd.com.cn/"
-  }
-
-默认输出位置：<最近的 pyproject.toml 所在目录>/data/zf_schedule/
-（找不到 pyproject.toml 时，使用脚本所在目录）
-
-注意：data/zf_schedule/ 含个人信息和登录 Cookie，脚本会自动创建子目录 .gitignore。
-      config.json 包含敏感信息，请勿提交到 git。
+配置文件登录：添加 --config cli/config.json。
+手动浏览器登录：添加 --manual，此时 --install-browser 会安装完整 Chromium。
+离线验证：添加 --from-json 路径，无需访问学校。
+默认数据目录：脚本所在目录下的 data/zf_schedule/。
 """
 
 import argparse
@@ -42,6 +22,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -167,13 +148,20 @@ def auto_login(page, login_url: str, username: str, password: str) -> None:
     if not login_clicked:
         raise RuntimeError("无法找到登录按钮，请检查网页结构")
 
-    # 等待登录完成
-    print("等待登录完成...")
-    time.sleep(5)
+    # auth_loginSuccess.html 是中间跳转，等待进入实际教务页面再继续请求。
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-    # 检查是否登录成功（检查 URL 是否跳转或页面是否包含特定元素）
-    current_url = page.url
-    if "login" in current_url.lower():
+    print("等待登录完成...")
+    try:
+        page.wait_for_url(
+            lambda url: all(marker not in url.lower() for marker in ("login_slogin", "loginsuccess")),
+            wait_until="domcontentloaded", timeout=15000,
+        )
+        login_failed = False
+    except PlaywrightTimeoutError:
+        login_failed = True
+
+    if login_failed:
         # 检查是否有错误提示
         error_messages = []
         error_selectors = [
@@ -201,19 +189,15 @@ def auto_login(page, login_url: str, username: str, password: str) -> None:
 
 
 def locate_project_root() -> Path:
-    """以文件位置为准，而非当前工作目录或虚拟环境的位置。"""
-    script_dir = Path(__file__).resolve().parent
-    for candidate in (script_dir, *script_dir.parents):
-        if (candidate / "pyproject.toml").is_file():
-            return candidate
-    return script_dir
+    """单文件运行时始终以脚本目录为基准，不依赖外层 uv 项目。"""
+    return Path(__file__).resolve().parent
 
 
 def resolve_data_dir(project_root: Path, override: str | None) -> Path:
     if not override:
         return project_root / "data" / "zf_schedule"
     path = Path(override).expanduser()
-    # 相对路径也相对于 uv 项目，而不是 shell 的当前目录
+    # 相对路径相对于调用方传入的模块目录，而不是当前工作目录
     return (path if path.is_absolute() else project_root / path).resolve()
 
 
@@ -237,11 +221,11 @@ def unwrap_response(data: object) -> tuple[dict, str | None]:
     return data, None
 
 
-def normalize(raw: dict) -> dict:
+def normalize(raw: dict, *, allow_empty: bool = False) -> dict:
     rows = raw.get("kbList")
     if not isinstance(rows, list):
         raise ValueError("响应缺少 kbList 数组，可能登录失效或接口不匹配")
-    if not rows:
+    if not rows and not allow_empty:
         raise ValueError("kbList 为空；为防止误判全部课程取消，本次不覆盖旧快照")
 
     courses = []
@@ -348,18 +332,19 @@ def report_and_save(raw: dict, year: str, term: str, data_dir: Path,
         "response": raw,
     })
     atomic_write_json(snapshot, new)
-    print("UV 项目数据目录：", data_dir)
+    print("课表数据目录：", data_dir)
     print("原始响应：", latest.name)
     print("标准化快照：", snapshot.name)
     return 0
 
 
-def fetch_from_school(args: argparse.Namespace, data_dir: Path) -> dict:
+def fetch_from_school(args: argparse.Namespace, data_dir: Path,
+                      credentials: tuple[str, str] | None = None) -> dict:
     # 只在抓取网络时需要 Playwright，离线验证 JSON 无需安装依赖
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
-        raise RuntimeError("缺少 playwright，请在 UV 项目目录执行 uv add playwright") from exc
+        raise RuntimeError("缺少 playwright，请通过 uv run 执行本脚本以安装声明的依赖") from exc
 
     base = args.base_url.rstrip("/") + "/"
     endpoint = args.endpoint
@@ -368,9 +353,8 @@ def fetch_from_school(args: argparse.Namespace, data_dir: Path) -> dict:
     ensure_private_data_dir(data_dir)
     profile = data_dir / "browser-profile"
 
-    # 获取登录凭据
-    credentials = None
-    if args.login:
+    # API 可直接传入凭据；原有 CLI 仍使用配置文件或交互输入。
+    if args.login and credentials is None:
         if args.manual:
             # 手动登录模式（原方式）
             credentials = None
@@ -430,9 +414,10 @@ def fetch_from_school(args: argparse.Namespace, data_dir: Path) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="正方教务个人课表抓取、验证和变化检测（UV 项目内保存）")
+    parser = argparse.ArgumentParser(description="正方教务个人课表抓取、验证和变化检测（单文件 uv run）")
     parser.add_argument("--base-url", help="教务系统基础地址，例如 https://jwxt.gxnzd.com.cn/")
     parser.add_argument("--login", action="store_true", help="执行登录操作（需配合 --config、--manual 或交互式输入）")
+    parser.add_argument("--install-browser", action="store_true", help="抓取前安装 Chromium（首次运行使用）")
     parser.add_argument("--manual", action="store_true", help="手动浏览器登录（需配合 --login）")
     parser.add_argument("--config", type=Path, help="从 JSON 配置文件读取账号密码（推荐服务器使用）")
     parser.add_argument("--login-url", help="自定义学校统一身份认证入口")
@@ -440,7 +425,7 @@ def main() -> int:
     parser.add_argument("--term", choices=("3", "12"), default="3", help="3=第一学期，12=第二学期")
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="课程 API 相对路径或完整 URL")
     parser.add_argument("--from-json", type=Path, help="离线导入原始接口响应或本脚本生成的包装 JSON")
-    parser.add_argument("--data-dir", help="可选保存位置；相对路径以 UV 项目根目录为基准")
+    parser.add_argument("--data-dir", help="可选保存位置；相对路径以脚本目录为基准")
     args = parser.parse_args()
     if args.from_json is None and not args.base_url:
         parser.error("必须提供 --base-url 或 --from-json")
@@ -460,6 +445,11 @@ def main() -> int:
             src = json.loads(args.from_json.read_text(encoding="utf-8-sig"))
             raw, fetched_at = unwrap_response(src)
         else:
+            if args.install_browser:
+                command = [sys.executable, "-m", "playwright", "install"]
+                if not args.manual:
+                    command.append("--only-shell")
+                subprocess.run([*command, "chromium"], check=True)
             raw, fetched_at = fetch_from_school(args, data_dir), None
         return report_and_save(raw, args.year, args.term, data_dir, fetched_at)
     except Exception as exc:
